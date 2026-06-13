@@ -1,125 +1,210 @@
-export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// api/analyze.js — Vercel Serverless Function for "Yellow Shoes"
+// Analyzes a fashion item image and returns styling suggestions (with per-store
+// shopping search terms) as JSON.
+//
+// Security:
+//   - CORS allowlist via the ALLOWED_ORIGINS env var (comma-separated origins).
+//   - Best-effort per-IP rate limiting (configurable via env).
+
+const SUPPORTED_LANGUAGES = {
+  English: 'English',
+  'Portuguese (Portugal)': 'European Portuguese (pt-PT)',
+  'Portuguese (Brazil)': 'Brazilian Portuguese (pt-BR)',
+  French: 'French',
+  Italian: 'Italian',
+  German: 'German',
+};
+
+// ----- Best-effort in-memory rate limiter -----
+// NOTE: Vercel runs multiple ephemeral instances, so this limits per-instance
+// and resets on cold starts. For robust, global limits use Vercel KV / Upstash.
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '20', 10);
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '600000', 10); // 10 min
+const hits = new Map(); // ip -> number[] of request timestamps
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  recent.push(now);
+  hits.set(ip, recent);
+
+  // Opportunistic cleanup so the map can't grow unbounded.
+  if (hits.size > 5000) {
+    for (const [key, times] of hits) {
+      if (!times.some((t) => now - t < RATE_LIMIT_WINDOW_MS)) hits.delete(key);
+    }
+  }
+  return recent.length > RATE_LIMIT_MAX;
+}
+
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+// Returns true if the request's origin is allowed and sets the proper header.
+function applyCors(req, res) {
+  const allowed = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const origin = req.headers.origin;
+
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  // No allowlist configured: reflect the request origin so the app works out of
+  // the box (not a blanket '*'). Set ALLOWED_ORIGINS to lock this down.
+  if (allowed.length === 0) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    return true;
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (origin && allowed.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    return true;
+  }
+  return false;
+}
+
+export default async function handler(req, res) {
+  const originAllowed = applyCors(req, res);
+
+  if (req.method === 'OPTIONS') return res.status(originAllowed ? 200 : 403).end();
+  if (!originAllowed) return res.status(403).json({ error: 'Origin not allowed.' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  if (isRateLimited(clientIp(req))) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
   }
 
   try {
-    const { imageData } = req.body;
+    const { imageData, mediaType, style, season, language } = req.body || {};
 
     if (!imageData) {
-      return res.status(400).json({ error: 'No image data provided' });
+      return res.status(400).json({ error: 'No image data provided.' });
     }
 
-    // Get API key from environment variable
     const apiKey = process.env.ANTHROPIC_API_KEY;
-
     if (!apiKey) {
       console.error('ANTHROPIC_API_KEY not found in environment');
-      return res.status(500).json({ 
-        error: 'ANTHROPIC_API_KEY not configured. Please add it to your Vercel environment variables.' 
+      return res.status(500).json({
+        error: 'API key not configured. Add ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables.',
       });
     }
 
-    console.log('API Key found, calling Anthropic...');
+    const languageLabel = SUPPORTED_LANGUAGES[language] || 'English';
+    const inLanguage =
+      languageLabel === 'English'
+        ? ''
+        : ` IMPORTANT: write every text value in the JSON in ${languageLabel}.`;
 
-    // Call Anthropic API
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1500,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: imageData
-                }
-              },
-              {
-                type: "text",
-                text: `Analyze this fashion item and provide styling suggestions. Return ONLY a JSON object (no markdown, no backticks) with this structure:
+    const focus =
+      style && season
+        ? `Provide polished ${style} outfit suggestions specifically for the ${season} season, blending ${style} aesthetics with ${season} weather and mood.`
+        : 'Provide versatile, wearable styling suggestions.';
+
+    const promptText = `You are a professional fashion stylist. Analyze the fashion item in the image. ${focus}${inLanguage}
+
+Return ONLY a raw JSON object — no markdown, no backticks, no preamble — matching exactly this shape:
 {
-  "itemDescription": "brief description of the item and its color",
-  "styleCategory": "casual/formal/sporty/elegant",
-  "colorPalette": ["color1", "color2", "color3"],
+  "itemDescription": "short description of the item and its main color",
+  "styleCategory": "${style || 'casual / formal / sporty / elegant'}",
+  "colorPalette": ["color", "color", "color"],
   "outfitSuggestions": [
     {
-      "name": "Outfit name",
+      "name": "outfit name",
+      "vibe": "one short sentence on why this look works",
       "items": {
-        "tops": "suggestion with colors",
-        "bottoms": "suggestion with colors",
-        "accessories": "suggestion"
+        "tops": "specific suggestion with colors and fabrics",
+        "bottoms": "specific suggestion with colors and styles",
+        "accessories": "shoes, bag and jewelry suggestions"
       },
-      "vibe": "description of the look",
       "searchTerms": {
-        "zara": "zara search term",
-        "mango": "mango search term",
-        "parfois": "parfois search term"
-      }
-    },
-    {
-      "name": "Another outfit name",
-      "items": {
-        "tops": "different suggestion with colors",
-        "bottoms": "different suggestion with colors",
-        "accessories": "different suggestion"
-      },
-      "vibe": "description of this look",
-      "searchTerms": {
-        "zara": "zara search term",
-        "mango": "mango search term",
-        "parfois": "parfois search term"
+        "zara": "2-4 word search term for the key piece",
+        "mango": "2-4 word search term for the key piece",
+        "parfois": "2-4 word search term for an accessory"
       }
     }
   ],
-  "tips": ["tip1", "tip2", "tip3"]
-}`
-              }
-            ]
-          }
-        ]
-      })
+  "tips": ["tip", "tip", "tip"]
+}
+Include exactly 3 entries in outfitSuggestions and 3 entries in tips. Keep searchTerms short and shopping-friendly.`;
+
+    const safeMediaType =
+      typeof mediaType === 'string' && mediaType.startsWith('image/') ? mediaType : 'image/jpeg';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: safeMediaType, data: imageData } },
+              { type: 'text', text: promptText },
+            ],
+          },
+        ],
+      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Anthropic API error:', errorText);
-      return res.status(response.status).json({
-        error: `Anthropic API error: ${response.status} - ${errorText}`
-      });
+      console.error('Anthropic API error:', response.status, errorText);
+      return res
+        .status(502)
+        .json({ error: `The styling service returned an error (${response.status}). Please try again in a moment.` });
     }
 
     const data = await response.json();
-    const textContent = data.content.find(item => item.type === 'text')?.text || '';
-    
-    // Clean and parse the response
-    const cleanText = textContent.trim();
-    const parsed = JSON.parse(cleanText);
+    const rawText = (data.content || []).find((block) => block.type === 'text')?.text || '';
+
+    const parsed = extractJson(rawText);
+    if (!parsed) {
+      console.error('Could not parse model output as JSON. First 500 chars:', rawText.slice(0, 500));
+      return res.status(502).json({ error: 'The stylist response was malformed. Please try again.' });
+    }
 
     return res.status(200).json(parsed);
   } catch (error) {
-    console.error('Error in analyze route:', error);
-    return res.status(500).json({
-      error: error.message || 'Internal server error'
-    });
+    console.error('Error in analyze handler:', error);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
   }
+}
+
+// Robustly pull a JSON object out of the model's text response.
+// Handles raw JSON, ```json fenced blocks, and stray text around the object.
+function extractJson(text) {
+  if (!text) return null;
+  let t = text.trim();
+
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+
+  try {
+    return JSON.parse(t);
+  } catch (_) {
+    /* fall through */
+  }
+
+  const first = t.indexOf('{');
+  const last = t.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) {
+    try {
+      return JSON.parse(t.slice(first, last + 1));
+    } catch (_) {
+      /* give up */
+    }
+  }
+  return null;
 }
