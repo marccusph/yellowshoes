@@ -60,13 +60,84 @@
         const MAX_IMAGE_DIM = 1568;
         const JPEG_QUALITY = 0.85;
 
-        // Shopping destinations. The AI returns a short search term per store;
-        // we route to each store's site search (opens in a new tab).
-        const SHOPS = [
-            { key: 'zara', label: 'Zara', url: (t) => `https://www.zara.com/us/en/search?searchTerm=${encodeURIComponent(t)}` },
-            { key: 'mango', label: 'Mango', url: (t) => `https://shop.mango.com/search?q=${encodeURIComponent(t)}` },
-            { key: 'parfois', label: 'Parfois', url: (t) => `https://www.parfois.com/catalogsearch/result/?q=${encodeURIComponent(t)}` },
-        ];
+        // ---- Affiliate configuration ----
+        // The AI returns a generic search query per item (in the user's language);
+        // we show up to 3 affiliate stores chosen by the visitor's country.
+        // Links work right away (they open the store's search). To MONETIZE, enroll
+        // in each program/network and fill in the IDs in AFFILIATE_SETTINGS / BRANDS
+        // below — no other code changes are needed.
+        const e = encodeURIComponent;
+
+        const AFFILIATE_SETTINGS = {
+            awinAffId: '',   // your Awin publisher id, e.g. '1234567' (used by brands that have an awinMid)
+            amazonTag: '',   // your Amazon Associates tag, e.g. 'yellowshoes-20'
+        };
+
+        // Each brand: how to search its store + (optional) how to monetize the link.
+        const BRANDS = {
+            mango:     { label: 'Mango',     search: q => `https://shop.mango.com/search?q=${e(q)}`, awinMid: '' },
+            zara:      { label: 'Zara',      search: q => `https://www.zara.com/search?searchTerm=${e(q)}` }, // Zara has no affiliate program — direct link
+            parfois:   { label: 'Parfois',   search: q => `https://www.parfois.com/catalogsearch/result/?q=${e(q)}` },
+            farfetch:  { label: 'Farfetch',  search: q => `https://www.farfetch.com/shopping/search/items.aspx?q=${e(q)}`, awinMid: '' },
+            asos:      { label: 'ASOS',      search: q => `https://www.asos.com/search/?q=${e(q)}`, awinMid: '' },
+            hm:        { label: 'H&M',       search: q => `https://www2.hm.com/en/search-results.html?q=${e(q)}` },
+            zalando:   { label: 'Zalando',   search: q => `https://www.zalando.com/catalog/?q=${e(q)}`, awinMid: '' },
+            dafiti:    { label: 'Dafiti',    search: q => `https://www.dafiti.com.br/catalog/?q=${e(q)}`, awinMid: '' },
+            amaro:     { label: 'Amaro',     search: q => `https://amaro.com/busca?q=${e(q)}` },
+            renner:    { label: 'Renner',    search: q => `https://www.lojasrenner.com.br/busca?q=${e(q)}` },
+            nordstrom: { label: 'Nordstrom', search: q => `https://www.nordstrom.com/sr?keyword=${e(q)}` },
+            amazon:    { label: 'Amazon',    search: q => `https://www.amazon.com/s?k=${e(q)}&i=fashion`, amazon: true },
+        };
+
+        // Up to the first 3 brands are shown per country. Edit freely.
+        const AFFILIATES_BY_COUNTRY = {
+            PT: ['mango', 'farfetch', 'parfois'],
+            ES: ['mango', 'zara', 'farfetch'],
+            FR: ['zalando', 'mango', 'farfetch'],
+            IT: ['zalando', 'mango', 'farfetch'],
+            DE: ['zalando', 'mango', 'asos'],
+            GB: ['asos', 'farfetch', 'hm'],
+            US: ['nordstrom', 'asos', 'amazon'],
+            BR: ['dafiti', 'farfetch', 'amaro'],
+        };
+        const DEFAULT_AFFILIATES = ['farfetch', 'asos', 'mango'];
+
+        // Button verb per UI language ("Ver na Mango", "Shop on Mango"...).
+        const SHOP_VERB = {
+            'English': 'Shop on',
+            'Portuguese (Portugal)': 'Ver na',
+            'Portuguese (Brazil)': 'Ver na',
+            'French': 'Voir sur',
+            'Italian': 'Vedi su',
+            'German': 'Bei',
+        };
+
+        function resolveCountry(suggestions, language) {
+            const fromApi = suggestions && suggestions.country ? String(suggestions.country).toUpperCase() : '';
+            if (fromApi) return fromApi;
+            // Fallback when geolocation is unavailable (e.g. local dev): guess from language.
+            if (language === 'Portuguese (Brazil)') return 'BR';
+            if (language === 'Portuguese (Portugal)') return 'PT';
+            if (language === 'French') return 'FR';
+            if (language === 'Italian') return 'IT';
+            if (language === 'German') return 'DE';
+            return 'DEFAULT';
+        }
+        function affiliatesForCountry(code) {
+            return (AFFILIATES_BY_COUNTRY[code] || DEFAULT_AFFILIATES).slice(0, 3);
+        }
+        function buildAffiliateUrl(brandKey, query) {
+            const b = BRANDS[brandKey];
+            if (!b) return '#';
+            const dest = b.search(query);
+            if (b.awinMid && AFFILIATE_SETTINGS.awinAffId) {
+                return `https://www.awin1.com/cread.php?awinmid=${b.awinMid}&awinaffid=${AFFILIATE_SETTINGS.awinAffId}&ued=${e(dest)}`;
+            }
+            if (b.amazon && AFFILIATE_SETTINGS.amazonTag) {
+                return dest + (dest.indexOf('?') >= 0 ? '&' : '?') + 'tag=' + e(AFFILIATE_SETTINGS.amazonTag);
+            }
+            return dest; // plain store search — works now, monetizes once IDs are set
+        }
 
         // ----- Icons -----
         const CameraIcon = () => h('svg', { xmlns: "http://www.w3.org/2000/svg", width: 24, height: 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
@@ -166,24 +237,22 @@
             );
         }
 
-        function ShopRow({ searchTerms }) {
-            const available = SHOPS.filter((s) => searchTerms && searchTerms[s.key]);
-            if (available.length === 0) return null;
-            return h('div', { className: "mt-4 pt-4 border-t border-neutral-100" },
-                h('h4', { className: "font-semibold text-brand-black text-sm mb-2 flex items-center gap-1.5" },
-                    h(BagIcon), 'Shop the look'
-                ),
-                h('div', { className: "flex flex-wrap gap-2" },
-                    ...available.map((s) =>
-                        h('a', {
-                            key: s.key,
-                            href: s.url(searchTerms[s.key]),
-                            target: "_blank",
-                            rel: "noopener noreferrer",
-                            className: "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-brand-black/15 bg-white text-brand-black hover:bg-yellow-50 hover:border-brand-yellow transition-colors"
-                        }, s.label)
-                    )
-                )
+        // Affiliate buttons for a single item: up to 3 country-appropriate stores.
+        function ShopButtons({ query, brands, lang }) {
+            if (!query || !brands || brands.length === 0) return null;
+            const verb = SHOP_VERB[lang] || SHOP_VERB.English;
+            return h('div', { className: "flex flex-wrap gap-2 mt-2" },
+                ...brands.map((key) => {
+                    const b = BRANDS[key];
+                    if (!b) return null;
+                    return h('a', {
+                        key: key,
+                        href: buildAffiliateUrl(key, query),
+                        target: "_blank",
+                        rel: "sponsored noopener noreferrer",
+                        className: "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-brand-black/15 bg-white text-brand-black hover:bg-yellow-50 hover:border-brand-yellow transition-colors"
+                    }, h(BagIcon), `${verb} ${b.label}`);
+                })
             );
         }
 
@@ -295,6 +364,7 @@
 
             const primaryBtn = "w-full bg-brand-yellow text-brand-black py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-brand-yellow-hover transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed";
             const secondaryBtn = "w-full bg-white border-2 border-brand-black text-brand-black py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-yellow-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+            const shopBrands = affiliatesForCountry(resolveCountry(suggestions, selectedLanguage));
 
             return h('div', { className: "min-h-screen flex flex-col" },
                 // Header
@@ -456,21 +526,23 @@
                                     h('div', { key: idx, className: "bg-white rounded-2xl shadow-lg p-6 border border-neutral-100" },
                                         h('h3', { className: "text-xl font-bold text-brand-black mb-2" }, outfit.name || `Look ${idx + 1}`),
                                         outfit.vibe && h('p', { className: "text-sm text-neutral-600 mb-4 italic" }, outfit.vibe),
-                                        h('div', { className: "space-y-3" },
+                                        h('div', { className: "space-y-4" },
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Tops:'),
-                                                h('p', { className: "text-neutral-700" }, outfit.items?.tops || '—')
+                                                h('p', { className: "text-neutral-700" }, outfit.items?.tops || '—'),
+                                                h(ShopButtons, { query: outfit.searchTerms?.tops, brands: shopBrands, lang: selectedLanguage })
                                             ),
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Bottoms:'),
-                                                h('p', { className: "text-neutral-700" }, outfit.items?.bottoms || '—')
+                                                h('p', { className: "text-neutral-700" }, outfit.items?.bottoms || '—'),
+                                                h(ShopButtons, { query: outfit.searchTerms?.bottoms, brands: shopBrands, lang: selectedLanguage })
                                             ),
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Accessories:'),
-                                                h('p', { className: "text-neutral-700" }, outfit.items?.accessories || '—')
+                                                h('p', { className: "text-neutral-700" }, outfit.items?.accessories || '—'),
+                                                h(ShopButtons, { query: outfit.searchTerms?.accessories, brands: shopBrands, lang: selectedLanguage })
                                             )
-                                        ),
-                                        h(ShopRow, { searchTerms: outfit.searchTerms })
+                                        )
                                     )
                                 ),
                                 // Styling tips
@@ -504,7 +576,7 @@
 
                 // Footer
                 h('footer', { className: "w-full max-w-2xl mx-auto px-4 py-6 text-center text-xs text-neutral-400" },
-                    'Yellow Shoes · styling suggestions are AI-generated'
+                    'Yellow Shoes · styling suggestions are AI-generated · some links are affiliate links'
                 )
             );
         }

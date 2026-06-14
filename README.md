@@ -7,9 +7,8 @@ links — in your chosen language, tuned to a style and season.
 Built with plain HTML + React (via CDN, no build step) and a single Vercel
 serverless function that calls the Anthropic API.
 
-> Previously named *stailized*. The in-app branding is now **Yellow Shoes**
-> (black / yellow / white identity). The GitHub repo is still `style-ai` — rename
-> it on GitHub if you want the URL to match.
+> Previously named *stailized*; rebranded to **Yellow Shoes** (black / yellow /
+> white identity). GitHub repo: `marccusph/yellowshoes`.
 
 ## How it works
 
@@ -18,8 +17,10 @@ serverless function that calls the Anthropic API.
    don't fail), then sent to `/api/analyze`.
 3. The serverless function asks Claude to return outfit suggestions as JSON,
    respecting the selected **language**, **style** and **season**, plus a short
-   **search term per store** for the shopping links.
-4. The app renders the looks, color palette, tips and "Shop the look" buttons.
+   **search query per item** used to build the shopping links. It also returns the
+   visitor's **country** (from Vercel's geolocation header).
+4. The app renders the looks, color palette, tips and, for each item, up to three
+   **affiliate buttons** for stores available in the visitor's country.
 
 ## Project structure
 
@@ -57,6 +58,24 @@ then add the environment variables below and click **Deploy**.
   instance* and resets on cold starts — enough to deter casual abuse. For
   robust, global limits, back it with **Vercel KV** or **Upstash Redis**.
 
+## Affiliate links
+
+Each suggested item shows up to three "shop" buttons. Which stores appear depends
+on the visitor's country (detected via Vercel's `x-vercel-ip-country` header, with a
+language-based fallback for local dev). It all lives in `index.html`:
+
+- `BRANDS` — each store's display name and how to build its search URL.
+- `AFFILIATES_BY_COUNTRY` — which stores to show per country (first 3 are used);
+  `DEFAULT_AFFILIATES` is the fallback.
+- `SHOP_VERB` — button label per UI language ("Ver na Mango", "Shop on Mango"…).
+
+Links work out of the box (they open the store's search). **They are not monetized
+until you enrol in the affiliate programs and add your IDs** in `AFFILIATE_SETTINGS`
+(`awinAffId`, `amazonTag`) plus each brand's `awinMid`. Brands with an Awin id get
+wrapped in an Awin deep link automatically; Amazon uses your Associates `tag`.
+Outbound links use `rel="sponsored"`. Note: Zara/Inditex has no affiliate program,
+so its link stays a plain search.
+
 ## Local development
 
 ```bash
@@ -71,8 +90,9 @@ return suggestions.
 ## Configuration
 
 - **Model** — `api/analyze.js` (`model: 'claude-sonnet-4-20250514'`).
-- **Languages / styles / seasons / stores** — `index.html` (`SHOPS` controls the
-  shopping links).
+- **Languages / styles / seasons** — `index.html`.
+- **Affiliate stores** — `index.html`: `BRANDS`, `AFFILIATES_BY_COUNTRY`,
+  `DEFAULT_AFFILIATES`. See *Affiliate links* above.
 - **Image size** — `MAX_IMAGE_DIM` (1568px) and `JPEG_QUALITY` (0.85) in
   `index.html`.
 
