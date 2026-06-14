@@ -83,6 +83,10 @@ export default async function handler(req, res) {
   try {
     const { imageData, mediaType, style, season, language } = req.body || {};
 
+    // Visitor country from Vercel's edge geolocation (ISO code, e.g. "BR", "PT").
+    // Used by the frontend to pick country-appropriate affiliate stores.
+    const country = (req.headers['x-vercel-ip-country'] || '').toUpperCase();
+
     if (!imageData) {
       return res.status(400).json({ error: 'No image data provided.' });
     }
@@ -123,9 +127,9 @@ Return ONLY a raw JSON object — no markdown, no backticks, no preamble — mat
         "accessories": "shoes, bag and jewelry suggestions"
       },
       "searchTerms": {
-        "zara": "2-4 word search term for the key piece",
-        "mango": "2-4 word search term for the key piece",
-        "parfois": "2-4 word search term for an accessory"
+        "tops": "2-4 word shoppable search query for the top (color + garment)",
+        "bottoms": "2-4 word shoppable search query for the bottoms",
+        "accessories": "2-4 word shoppable search query for a key accessory"
       }
     }
   ],
@@ -175,7 +179,7 @@ Include exactly 3 entries in outfitSuggestions and 3 entries in tips. Keep searc
       return res.status(502).json({ error: 'The stylist response was malformed. Please try again.' });
     }
 
-    return res.status(200).json(parsed);
+    return res.status(200).json({ ...parsed, country });
   } catch (error) {
     console.error('Error in analyze handler:', error);
     return res.status(500).json({ error: error.message || 'Internal server error' });
