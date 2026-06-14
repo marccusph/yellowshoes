@@ -105,17 +105,17 @@ export default async function handler(req, res) {
         ? ''
         : ` IMPORTANT: write every text value in the JSON in ${languageLabel}.`;
 
-    const focus =
-      style && season
-        ? `Provide polished ${style} outfit suggestions specifically for the ${season} season, blending ${style} aesthetics with ${season} weather and mood.`
-        : 'Provide versatile, wearable styling suggestions.';
+    // The default look is always "Casual"; choosing a style (with a season) overrides it.
+    const effectiveStyle = style || 'Casual';
+    const seasonPart = season ? ` for the ${season} season` : '';
+    const focus = `Provide ONE wearable ${effectiveStyle} outfit${seasonPart}, with tasteful, specific pieces.`;
 
     const promptText = `You are a professional fashion stylist. Analyze the fashion item in the image. ${focus}${inLanguage}
 
 Return ONLY a raw JSON object — no markdown, no backticks, no preamble — matching exactly this shape:
 {
   "itemDescription": "short description of the item and its main color",
-  "styleCategory": "${style || 'casual / formal / sporty / elegant'}",
+  "styleCategory": "${effectiveStyle}",
   "colorPalette": ["color", "color", "color"],
   "outfitSuggestions": [
     {
@@ -135,7 +135,7 @@ Return ONLY a raw JSON object — no markdown, no backticks, no preamble — mat
   ],
   "tips": ["tip", "tip", "tip"]
 }
-Include exactly 3 entries in outfitSuggestions and 3 entries in tips. Keep searchTerms short and shopping-friendly.`;
+Include exactly 1 entry in outfitSuggestions and 3 entries in tips. Keep searchTerms short and shopping-friendly.`;
 
     const safeMediaType =
       typeof mediaType === 'string' && mediaType.startsWith('image/') ? mediaType : 'image/jpeg';
