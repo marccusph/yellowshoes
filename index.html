@@ -65,33 +65,43 @@
         // we show up to 3 affiliate stores chosen by the visitor's country.
         // Links work right away (they open the store's search). To MONETIZE, enroll
         // in each program/network and fill in the IDs in AFFILIATE_SETTINGS / BRANDS
-        // below — no other code changes are needed.
+        // below — no other code changes are needed. Full step-by-step: AFFILIATE_SETUP.md.
         const e = encodeURIComponent;
 
         const AFFILIATE_SETTINGS = {
-            awinAffId: '',   // your Awin publisher id, e.g. '1234567' (used by brands that have an awinMid)
+            awinAffId: '2934877',   // Awin publisher id for the "Yellow Shoes" account (set 2026-06-14)
             amazonTag: '',   // your Amazon Associates tag, e.g. 'yellowshoes-20'
         };
 
         // Each brand: how to search its store + (optional) how to monetize the link.
+        // `awinMid` = the brand's Awin advertiser id — paste it in after you're approved
+        // for that program. Amazon uses a tracking tag instead. Brands on other networks
+        // (CJ/Rakuten/Impact) can be added by extending buildAffiliateUrl(). Full
+        // step-by-step in AFFILIATE_SETUP.md.
         const BRANDS = {
             mango:     { label: 'Mango',     search: q => `https://shop.mango.com/search?q=${e(q)}`, awinMid: '' },
             zara:      { label: 'Zara',      search: q => `https://www.zara.com/search?searchTerm=${e(q)}` }, // Zara has no affiliate program — direct link
-            parfois:   { label: 'Parfois',   search: q => `https://www.parfois.com/catalogsearch/result/?q=${e(q)}` },
+            parfois:   { label: 'Parfois',   search: q => `https://www.parfois.com/catalogsearch/result/?q=${e(q)}`, awinMid: '' },
             farfetch:  { label: 'Farfetch',  search: q => `https://www.farfetch.com/shopping/search/items.aspx?q=${e(q)}`, awinMid: '' },
             asos:      { label: 'ASOS',      search: q => `https://www.asos.com/search/?q=${e(q)}`, awinMid: '' },
-            hm:        { label: 'H&M',       search: q => `https://www2.hm.com/en/search-results.html?q=${e(q)}` },
+            hm:        { label: 'H&M',       search: q => `https://www2.hm.com/en/search-results.html?q=${e(q)}`, awinMid: '' },
             zalando:   { label: 'Zalando',   search: q => `https://www.zalando.com/catalog/?q=${e(q)}`, awinMid: '' },
             dafiti:    { label: 'Dafiti',    search: q => `https://www.dafiti.com.br/catalog/?q=${e(q)}`, awinMid: '' },
-            amaro:     { label: 'Amaro',     search: q => `https://amaro.com/busca?q=${e(q)}` },
-            renner:    { label: 'Renner',    search: q => `https://www.lojasrenner.com.br/busca?q=${e(q)}` },
-            nordstrom: { label: 'Nordstrom', search: q => `https://www.nordstrom.com/sr?keyword=${e(q)}` },
+            amaro:     { label: 'Amaro',     search: q => `https://amaro.com/busca?q=${e(q)}`, awinMid: '' },
+            renner:    { label: 'Renner',    search: q => `https://www.lojasrenner.com.br/busca?q=${e(q)}`, awinMid: '' },
+            nordstrom: { label: 'Nordstrom', search: q => `https://www.nordstrom.com/sr?keyword=${e(q)}`, awinMid: '' },
+            // Joined on Awin (PT) 2026-06-14 — these commission. Destinations are the
+            // store homepages on purpose (specialty stores: a per-item keyword search
+            // would mismatch, e.g. searching "jeans" on a shoe store). Refine later.
+            coolway:   { label: 'Coolway',  search: () => 'https://www.coolway.com',  awinMid: '114152' },
+            pandora:   { label: 'Pandora',  search: () => 'https://pt.pandora.net',   awinMid: '69294' },
+            benetton:  { label: 'Benetton', search: () => 'https://www.benetton.com', awinMid: '119191' },
             amazon:    { label: 'Amazon',    search: q => `https://www.amazon.com/s?k=${e(q)}&i=fashion`, amazon: true },
         };
 
         // Up to the first 3 brands are shown per country. Edit freely.
         const AFFILIATES_BY_COUNTRY = {
-            PT: ['mango', 'farfetch', 'parfois'],
+            PT: ['coolway', 'pandora', 'benetton'], // live Awin programmes (commissioning)
             ES: ['mango', 'zara', 'farfetch'],
             FR: ['zalando', 'mango', 'farfetch'],
             IT: ['zalando', 'mango', 'farfetch'],
@@ -138,6 +148,12 @@
             }
             return dest; // plain store search — works now, monetizes once IDs are set
         }
+
+        // ROADMAP (future) — exact-product links instead of a store search:
+        // On click/render, call the network's Product Search API (Awin/Sovrn/CJ) with the
+        // item query, take the 1st result's product URL, then wrap it with the Link Builder
+        // API for tracking. Keep API keys server-side via a new /api/product endpoint; cache
+        // results and fall back to the search link. See AFFILIATE_SETUP.md.
 
         // ----- Icons -----
         const CameraIcon = () => h('svg', { xmlns: "http://www.w3.org/2000/svg", width: 24, height: 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" },
