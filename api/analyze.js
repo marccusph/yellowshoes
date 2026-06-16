@@ -124,12 +124,14 @@ Return ONLY a raw JSON object — no markdown, no backticks, no preamble — mat
       "items": {
         "tops": "specific suggestion with colors and fabrics",
         "bottoms": "specific suggestion with colors and styles",
-        "accessories": "shoes, bag and jewelry suggestions"
+        "footwear": "specific shoe / sneaker / boot suggestion with colors",
+        "accessories": "bag, jewellery, belt or watch suggestions (NO shoes here)"
       },
       "searchTerms": {
-        "tops": "2-4 word shoppable search query for the top (color + garment)",
+        "tops": "2-4 word shoppable search query for the top (colour + garment)",
         "bottoms": "2-4 word shoppable search query for the bottoms",
-        "accessories": "2-4 word shoppable search query for a key accessory"
+        "footwear": "2-4 word shoppable search query for the shoes",
+        "accessories": "2-4 word shoppable search query for the key accessory (bag/jewellery/belt/watch)"
       }
     }
   ],
