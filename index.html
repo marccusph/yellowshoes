@@ -255,9 +255,9 @@
         // Which item types each brand actually sells (brands not listed fit all types).
         const BRAND_ITEMS = {
             parfois: ['accessories'],
-            coolway: ['footwear', 'accessories'],
             pandora: ['accessories'],
-            benetton: ['tops', 'bottoms', 'accessories'],
+            // Coolway sells footwear, clothing AND accessories -> fits all item types (no entry).
+            benetton: ['tops', 'outerwear', 'bottoms', 'accessories'],
         };
         const brandFits = (key, itemType) => {
             const allowed = BRAND_ITEMS[key];
@@ -561,6 +561,11 @@
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Tops:'),
                                                 h('p', { className: "text-neutral-700" }, outfit.items.tops),
                                                 h(ShopButtons, { query: outfit.searchTerms?.tops, brands: shopBrands, lang: selectedLanguage, itemType: 'tops' })
+                                            ),
+                                            outfit.items?.outerwear && h('div', {},
+                                                h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Layer ', h('span', { className: "text-neutral-400 font-normal" }, '· optional')),
+                                                h('p', { className: "text-neutral-700" }, outfit.items.outerwear),
+                                                h(ShopButtons, { query: outfit.searchTerms?.outerwear, brands: shopBrands, lang: selectedLanguage, itemType: 'outerwear' })
                                             ),
                                             outfit.items?.bottoms && h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Bottoms:'),
