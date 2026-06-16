@@ -90,12 +90,11 @@
             amaro:     { label: 'Amaro',     search: q => `https://amaro.com/busca?q=${e(q)}`, awinMid: '' },
             renner:    { label: 'Renner',    search: q => `https://www.lojasrenner.com.br/busca?q=${e(q)}`, awinMid: '' },
             nordstrom: { label: 'Nordstrom', search: q => `https://www.nordstrom.com/sr?keyword=${e(q)}`, awinMid: '' },
-            // Joined on Awin (PT) 2026-06-14 — these commission. Destinations are the
-            // store homepages on purpose (specialty stores: a per-item keyword search
-            // would mismatch, e.g. searching "jeans" on a shoe store). Refine later.
-            coolway:   { label: 'Coolway',  search: () => 'https://www.coolway.com',  awinMid: '114152' },
-            pandora:   { label: 'Pandora',  search: () => 'https://pt.pandora.net',   awinMid: '69294' },
-            benetton:  { label: 'Benetton', search: () => 'https://www.benetton.com', awinMid: '119191' },
+            // Joined on Awin (PT) — destination is each store's SEARCH for the suggested
+            // item (verified URLs). Shown only under the matching item type (see BRAND_ITEMS).
+            coolway:   { label: 'Coolway',  search: q => `https://www.coolway.com/search?q=${e(q)}`, awinMid: '114152' },
+            pandora:   { label: 'Pandora',  search: q => `https://pt.pandora.net/pt/search?q=${e(q)}`, awinMid: '69294' },
+            benetton:  { label: 'Benetton', search: q => `https://pt.benetton.com/search?q=${e(q)}`, awinMid: '119191' },
             amazon:    { label: 'Amazon',    search: q => `https://www.amazon.com/s?k=${e(q)}&i=fashion`, amazon: true },
         };
 
@@ -253,14 +252,27 @@
             );
         }
 
-        // Affiliate buttons for a single item: up to 3 country-appropriate stores.
-        function ShopButtons({ query, brands, lang }) {
+        // Which item types each brand actually sells (brands not listed fit all types).
+        const BRAND_ITEMS = {
+            parfois: ['accessories'],
+            coolway: ['footwear'],
+            pandora: ['accessories'],
+            benetton: ['tops', 'bottoms', 'accessories'],
+        };
+        const brandFits = (key, itemType) => {
+            const allowed = BRAND_ITEMS[key];
+            return !allowed || allowed.includes(itemType);
+        };
+
+        // Affiliate buttons for a single item — only the brands that sell this item type.
+        function ShopButtons({ query, brands, lang, itemType }) {
             if (!query || !brands || brands.length === 0) return null;
+            const relevant = brands.filter((key) => BRANDS[key] && brandFits(key, itemType));
+            if (relevant.length === 0) return null;
             const verb = SHOP_VERB[lang] || SHOP_VERB.English;
             return h('div', { className: "flex flex-wrap gap-2 mt-2" },
-                ...brands.map((key) => {
+                ...relevant.map((key) => {
                     const b = BRANDS[key];
-                    if (!b) return null;
                     return h('a', {
                         key: key,
                         href: buildAffiliateUrl(key, query),
@@ -546,17 +558,22 @@
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Tops:'),
                                                 h('p', { className: "text-neutral-700" }, outfit.items?.tops || '—'),
-                                                h(ShopButtons, { query: outfit.searchTerms?.tops, brands: shopBrands, lang: selectedLanguage })
+                                                h(ShopButtons, { query: outfit.searchTerms?.tops, brands: shopBrands, lang: selectedLanguage, itemType: 'tops' })
                                             ),
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Bottoms:'),
                                                 h('p', { className: "text-neutral-700" }, outfit.items?.bottoms || '—'),
-                                                h(ShopButtons, { query: outfit.searchTerms?.bottoms, brands: shopBrands, lang: selectedLanguage })
+                                                h(ShopButtons, { query: outfit.searchTerms?.bottoms, brands: shopBrands, lang: selectedLanguage, itemType: 'bottoms' })
+                                            ),
+                                            h('div', {},
+                                                h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Footwear:'),
+                                                h('p', { className: "text-neutral-700" }, outfit.items?.footwear || '—'),
+                                                h(ShopButtons, { query: outfit.searchTerms?.footwear, brands: shopBrands, lang: selectedLanguage, itemType: 'footwear' })
                                             ),
                                             h('div', {},
                                                 h('h4', { className: "font-semibold text-brand-black text-sm mb-1" }, 'Accessories:'),
                                                 h('p', { className: "text-neutral-700" }, outfit.items?.accessories || '—'),
-                                                h(ShopButtons, { query: outfit.searchTerms?.accessories, brands: shopBrands, lang: selectedLanguage })
+                                                h(ShopButtons, { query: outfit.searchTerms?.accessories, brands: shopBrands, lang: selectedLanguage, itemType: 'accessories' })
                                             )
                                         )
                                     )
