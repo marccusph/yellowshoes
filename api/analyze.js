@@ -110,7 +110,11 @@ export default async function handler(req, res) {
     const seasonPart = season ? ` for the ${season} season` : '';
     const focus = `Provide ONE wearable ${effectiveStyle} outfit${seasonPart}, with tasteful, specific pieces.`;
 
-    const promptText = `You are a professional fashion stylist. Analyze the fashion item in the image. ${focus}${inLanguage}
+    const promptText = `You are a professional fashion stylist. The image shows ONE fashion item the user ALREADY owns and wants to wear — it is the ANCHOR of the outfit, never something to re-suggest. ${focus}${inLanguage}
+
+Build the outfit AROUND that item:
+- Work out which slot the item fills: tops, bottoms, footwear or accessories (a dress or jumpsuit fills BOTH tops and bottoms).
+- Suggest ONLY the OTHER pieces that complete the look. For the slot(s) the user's item already fills, set BOTH its "items" value and its "searchTerms" value to an empty string "". Never suggest a replacement for a piece they already have.
 
 Return ONLY a raw JSON object — no markdown, no backticks, no preamble — matching exactly this shape:
 {
@@ -137,7 +141,7 @@ Return ONLY a raw JSON object — no markdown, no backticks, no preamble — mat
   ],
   "tips": ["tip", "tip", "tip"]
 }
-Include exactly 1 entry in outfitSuggestions and 3 entries in tips. Keep searchTerms short and shopping-friendly.`;
+Include exactly 1 entry in outfitSuggestions and 3 entries in tips. CRITICAL: leave the user's own item's slot empty ("") in both items and searchTerms — only fill the complementary slots. Keep searchTerms short and shopping-friendly.`;
 
     const safeMediaType =
       typeof mediaType === 'string' && mediaType.startsWith('image/') ? mediaType : 'image/jpeg';
